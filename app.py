@@ -76,26 +76,21 @@ if st.button("Изчисли Риска", type="primary"):
     st.subheader("Обяснение на решението (Random Forest)")
     st.markdown("Графиката показва как всеки индивидуален параметър е повлиял за повишаване (червено) или понижаване (синьо) на риска за този конкретен пациент спрямо средния риск.")
     
-    rf_model = models['Random Forest']
+   rf_model = models['Random Forest']
     
-    # Генериране на SHAP стойности
+    # Най-новият и надежден начин за SHAP
     explainer = shap.TreeExplainer(rf_model)
-    shap_values = explainer.shap_values(patient_df)
+    shap_obj = explainer(patient_df) # Създава Explanation обект директно
     
-    # Извличане на стойностите за клас 1 (csPCa)
-    if isinstance(shap_values, list):
-        sv_class1 = shap_values[1][0]
-        base_val = explainer.expected_value[1]
+    # Проверка на формата на данните (за да избегнем грешката ValueError)
+    if len(shap_obj.values.shape) == 3:
+        # Ако масивът е 3D (пациенти, променливи, класове), вземаме Клас 1
+        exp_single = shap_obj[0, :, 1]
     else:
-        sv_class1 = shap_values[0]
-        base_val = explainer.expected_value
+        # Ако масивът е 2D, просто вземаме първия пациент
+        exp_single = shap_obj[0]
         
     # Построяване на графиката
-    explanation = shap.Explanation(values=sv_class1, 
-                                   base_values=base_val, 
-                                   data=patient_df.iloc[0].values, 
-                                   feature_names=feature_names)
-    
     fig, ax = plt.subplots(figsize=(8, 4))
-    shap.waterfall_plot(explanation, show=False)
+    shap.waterfall_plot(exp_single, show=False)
     st.pyplot(fig)
