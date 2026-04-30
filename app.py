@@ -37,8 +37,8 @@ with col2:
     pirads = st.selectbox("PI-RADS Скор", options=[1, 2, 3, 4, 5], index=2)
     lesion_vol = st.number_input("Обем на лезията (mL)", min_value=0.1, max_value=50.0, value=1.0, format="%.2f")
 
-# 3. Автоматично изчисляване на PSAd lesion
-psad_lesion = tpsa / lesion_vol
+# 3. Автоматично изчисляване на PSAd lesion по обновената формула
+psad_lesion = (tpsa - (0.12 * pv)) / lesion_vol
 st.info(f"**Автоматично изчислен PSAd lesion:** {psad_lesion:.3f}")
 
 # Подготовка на данните СТРИКТНО в реда, в който са тренирани моделите (5 променливи!)
