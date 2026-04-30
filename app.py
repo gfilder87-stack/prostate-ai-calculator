@@ -5,10 +5,14 @@ import joblib
 import shap
 import matplotlib.pyplot as plt
 
-# 1. Зареждане на 10-те файла (моделите и скалъра)
+# 1. Зареждане на файловете (Модели, скалъри и списъци с колони)
 @st.cache_resource
 def load_models():
-    scaler = joblib.load('scaler.pkl')
+    imputer_tree = joblib.load('imputer_tree.pkl')
+    scaler_tree = joblib.load('scaler_tree.pkl')
+    scaler_linear = joblib.load('scaler_linear.pkl')
+    linear_cols = joblib.load('linear_feature_names.pkl')
+    
     models = {
         'Logistic Regression': joblib.load('log_reg.pkl'),
         'Ridge': joblib.load('ridge.pkl'),
@@ -19,9 +23,9 @@ def load_models():
         'XGBoost': joblib.load('xgb.pkl'),
         'Neural Network': joblib.load('nn.pkl')
     }
-    return scaler, models
+    return imputer_tree, scaler_tree, scaler_linear, linear_cols, models
 
-scaler, models = load_models()
+imputer_tree, scaler_tree, scaler_linear, linear_cols, models = load_models()
 
 st.title("Визуализатор за Риск от csPCa (ISUP > 1)")
 st.markdown("Въведете клиничните данни на пациента. Системата автоматично ще изчисли **PSAd lesion** и ще анализира риска чрез 8 AI алгоритъма.")
@@ -41,31 +45,48 @@ with col2:
 psad_lesion = (tpsa - (0.12 * pv)) / lesion_vol
 st.info(f"**Автоматично изчислен PSAd lesion:** {psad_lesion:.3f}")
 
-# Подготовка на данните СТРИКТНО в реда, в който са тренирани моделите (5 променливи!)
-feature_names = ['Age', 'tPSA', 'PV', 'PI-RADS', 'PSAd lesion']
-patient_data = np.array([[age, tpsa, pv, pirads, psad_lesion]])
-patient_df = pd.DataFrame(patient_data, columns=feature_names)
+# --- ПОТОК 1: Подготовка на данни за Дървета и Невронна мрежа ---
+feature_names_tree = ['Age', 'tPSA', 'PV', 'PI-RADS', 'PSAd lesion']
+patient_df_tree = pd.DataFrame([[age, tpsa, pv, pirads, psad_lesion]], columns=feature_names_tree)
 
-# Мащабиране (Scaling) за линейните модели и Невронната мрежа
-patient_scaled = scaler.transform(patient_df)
+patient_tree_imp = imputer_tree.transform(patient_df_tree)
+patient_tree_scaled = scaler_tree.transform(patient_tree_imp)
+
+# --- ПОТОК 2: Подготовка на данни за Линейните модели (Логаритми и Dummy) ---
+# Създаваме празен ред с всички колони, които моделът очаква (пълни с нули)
+patient_linear_df = pd.DataFrame(0, index=[0], columns=linear_cols)
+patient_linear_df['Age'] = age
+patient_linear_df['log_tPSA'] = np.log(tpsa)
+patient_linear_df['log_PV'] = np.log(pv)
+patient_linear_df['PSAd lesion'] = psad_lesion
+
+# Ако PI-RADS не е 5 (което е базовата категория), слагаме 1 в съответната колона
+pirads_col = f'PIRADS_{pirads}'
+if pirads_col in linear_cols:
+    patient_linear_df[pirads_col] = 1
+
+patient_linear_scaled = scaler_linear.transform(patient_linear_df)
 
 # Бутон за пресмятане
 if st.button("Изчисли Риска", type="primary"):
     st.divider()
     st.subheader("Резултати от 8-те алгоритъма:")
     
-    # Отпечатване на 8-те процента в решетка
     cols = st.columns(4)
     model_keys = list(models.keys())
     
     for i, m_name in enumerate(model_keys):
         model = models[m_name]
         
-        # Линейните и NN ползват мащабирани данни, дърветата ползват оригинални
-        if m_name in ['Logistic Regression', 'Ridge', 'LASSO', 'Elastic Net', 'Neural Network']:
-            prob = model.predict_proba(patient_scaled)[0][1] * 100
-        else:
-            prob = model.predict_proba(patient_df)[0][1] * 100
+        # Насочване на правилните данни към правилните модели
+        if m_name in ['Logistic Regression', 'Ridge', 'LASSO', 'Elastic Net']:
+            prob = model.predict_proba(patient_linear_scaled)[0][1] * 100
+        elif m_name == 'Neural Network':
+            prob = model.predict_proba(patient_tree_scaled)[0][1] * 100
+        else: # За дърветата (Tree, RF, XGBoost)
+            # Връщаме формата на DataFrame, за да може XGBoost и SHAP да виждат имената на колоните
+            patient_tree_df_final = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
+            prob = model.predict_proba(patient_tree_df_final)[0][1] * 100
             
         with cols[i % 4]:
             st.metric(label=m_name, value=f"{prob:.1f}%")
@@ -77,18 +98,16 @@ if st.button("Изчисли Риска", type="primary"):
     st.markdown("Графиката показва как всеки индивидуален параметър е повлиял за повишаване (червено) или понижаване (синьо) на риска за този конкретен пациент спрямо средния риск.")
     
     rf_model = models['Random Forest']
+    patient_tree_df_final = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
     
-    # Най-новият и надежден начин за SHAP
     explainer = shap.TreeExplainer(rf_model)
-    shap_obj = explainer(patient_df)
+    shap_obj = explainer(patient_tree_df_final)
     
-    # Проверка на формата на данните
     if len(shap_obj.values.shape) == 3:
         exp_single = shap_obj[0, :, 1]
     else:
         exp_single = shap_obj[0]
         
-    # Построяване на графиката
     fig, ax = plt.subplots(figsize=(8, 4))
     shap.waterfall_plot(exp_single, show=False)
     st.pyplot(fig)
