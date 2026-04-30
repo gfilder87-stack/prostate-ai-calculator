@@ -76,18 +76,16 @@ if st.button("Изчисли Риска", type="primary"):
     st.subheader("Обяснение на решението (Random Forest)")
     st.markdown("Графиката показва как всеки индивидуален параметър е повлиял за повишаване (червено) или понижаване (синьо) на риска за този конкретен пациент спрямо средния риск.")
     
-   rf_model = models['Random Forest']
+    rf_model = models['Random Forest']
     
     # Най-новият и надежден начин за SHAP
     explainer = shap.TreeExplainer(rf_model)
-    shap_obj = explainer(patient_df) # Създава Explanation обект директно
+    shap_obj = explainer(patient_df)
     
-    # Проверка на формата на данните (за да избегнем грешката ValueError)
+    # Проверка на формата на данните
     if len(shap_obj.values.shape) == 3:
-        # Ако масивът е 3D (пациенти, променливи, класове), вземаме Клас 1
         exp_single = shap_obj[0, :, 1]
     else:
-        # Ако масивът е 2D, просто вземаме първия пациент
         exp_single = shap_obj[0]
         
     # Построяване на графиката
