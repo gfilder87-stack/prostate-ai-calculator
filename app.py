@@ -28,7 +28,7 @@ def load_models():
 imputer_tree, scaler_tree, scaler_linear, linear_cols, models = load_models()
 
 # Центрирани заглавие и академично описание
-st.markdown("<h1 style='text-align: center;'>Калкулатор на риск от клинично значим карцином на простатната жлеза (ISUP ≥ 2)</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>Калкулатор за риск от клинично значим карцином на простатната жлеза (ISUP ≥ 2)</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; font-size: 18px;'>Въведете клиничните данни на пациента. Системата автоматично ще изчисли плътността на tPSA в лезията и ще стратифицира риска според 8 алгоритъма.</p>", unsafe_allow_html=True)
 st.divider()
 
