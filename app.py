@@ -82,7 +82,7 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     model_log = models['Logistic Regression']
     prob_log = model_log.predict_proba(patient_linear_scaled)[0][1] * 100
     with cols_group1[0]:
-        st.metric(label="Multivariate Log. Regression", value=f"{prob_log:.1f}%")
+        st.metric(label="Multivariate Logistic Regression", value=f"{prob_log:.1f}%")
             
     st.write("") # Празен ред за разстояние
     
