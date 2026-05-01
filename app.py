@@ -37,11 +37,11 @@ col1, col2 = st.columns(2)
 with col1:
     age = st.number_input("Възраст (години)", min_value=40, max_value=100, value=65)
     tpsa = st.number_input("tPSA (ng/mL)", min_value=0.1, max_value=100.0, value=5.0, format="%.2f")
-    pv = st.number_input("Обем на простатата (PV в mL)", min_value=10, max_value=200, value=50)
+    pv = st.number_input("Обем на простатата (mm³)", min_value=10, max_value=200, value=50)
 
 with col2:
     pirads = st.selectbox("PI-RADS оценка", options=[2, 3, 4, 5], index=1)
-    lesion_vol = st.number_input("Обем на лезията (mL)", min_value=0.1, max_value=50.0, value=1.0, format="%.2f")
+    lesion_vol = st.number_input("Обем на лезията (mm³)", min_value=0.1, max_value=50.0, value=1.0, format="%.2f")
     
     # 3. Автоматично изчисляване (Позиционирано в колона 2, ред 3)
     psad_lesion = (tpsa - (0.12 * pv)) / lesion_vol
