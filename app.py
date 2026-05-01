@@ -78,7 +78,7 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     st.markdown("Мултивариантна логистична регресия. Класическият златен стандарт, показващ базовата линейна зависимост между клиничните параметри и риска.")
     
     # Използваме колони, за да поддържаме визуален размер, но показваме само 1
-    cols_group1 = st.columns(4) 
+    cols_group1 = st.columns(2) 
     model_log = models['Logistic Regression']
     prob_log = model_log.predict_proba(patient_linear_scaled)[0][1] * 100
     with cols_group1[0]:
