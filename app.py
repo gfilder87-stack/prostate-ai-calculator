@@ -72,36 +72,47 @@ if st.button("Изчисли Риска", type="primary", use_container_width=Tr
     st.divider()
     
     # ==========================================
-    # ГРУПА 1: Конвенционална статистика
+    # ГРУПА 1: Конвенционална биостатистика
     # ==========================================
-    st.subheader("Конвенционална статистика (Линейни модели)")
-    st.markdown("Mултивариантен анализ и регуляризирани регресии, показващи линейна зависимост между клиничните параметри и риска.")
+    st.subheader("1. Конвенционална биостатистика")
+    st.markdown("Мултивариантна логистична регресия. Класическият златен стандарт, показващ базовата линейна зависимост между клиничните параметри и риска.")
     
-    cols_lin = st.columns(4)
-    linear_model_names = ['Logistic Regression', 'Ridge', 'LASSO', 'Elastic Net']
-    
-    for i, m_name in enumerate(linear_model_names):
-        model = models[m_name]
-        prob = model.predict_proba(patient_linear_scaled)[0][1] * 100
-        
-        # Визуално преименуваме Логистичната регресия за по-голяма яснота
-        display_name = "Multivariate Logistic Regression" if m_name == 'Logistic Regression' else m_name
-        
-        with cols_lin[i]:
-            st.metric(label=display_name, value=f"{prob:.1f}%")
+    # Използваме колони, за да поддържаме визуален размер, но показваме само 1
+    cols_group1 = st.columns(4) 
+    model_log = models['Logistic Regression']
+    prob_log = model_log.predict_proba(patient_linear_scaled)[0][1] * 100
+    with cols_group1[0]:
+        st.metric(label="Multivariate Log. Regression", value=f"{prob_log:.1f}%")
             
     st.write("") # Празен ред за разстояние
     
     # ==========================================
-    # ГРУПА 2: Изкуствен интелект (Машинно обучение)
+    # ГРУПА 2: Регуляризирани регресии
     # ==========================================
-    st.subheader("Изкуствен интелект (Машинно обучение)")
-    st.markdown("AI алгоритми, способни да откриват сложни нелинейни зависимости, които убягват на конвенционалната статистика.")
+    st.subheader("2. Регуляризирани регресии")
+    st.markdown("Модели, които съчетават статистика с техники от машинното обучение. Те прилагат регуляризация върху регресионните модели, за да се предотврати претрениране (overfitting).")
     
-    cols_ai = st.columns(4)
-    ai_model_names = ['Classification Tree', 'Random Forest', 'XGBoost', 'Neural Network']
+    cols_group2 = st.columns(3) # 3 колони за 3-те модела
+    reg_models = ['Ridge', 'LASSO', 'Elastic Net']
     
-    for i, m_name in enumerate(ai_model_names):
+    for i, m_name in enumerate(reg_models):
+        model = models[m_name]
+        prob = model.predict_proba(patient_linear_scaled)[0][1] * 100
+        with cols_group2[i]:
+            st.metric(label=m_name, value=f"{prob:.1f}%")
+            
+    st.write("") # Празен ред за разстояние
+
+    # ==========================================
+    # ГРУПА 3: Изкуствен интелект (Машинно обучение)
+    # ==========================================
+    st.subheader("3. Изкуствен интелект (AI алгоритми)")
+    st.markdown("Модерни нелинейни AI алгоритми, способни да откриват сложни скрити зависимости, които убягват на конвенционалната статистика.")
+    
+    cols_group3 = st.columns(4) # 4 колони за 4-те модела
+    ai_models = ['Classification Tree', 'Random Forest', 'XGBoost', 'Neural Network']
+    
+    for i, m_name in enumerate(ai_models):
         model = models[m_name]
         
         if m_name == 'Neural Network':
@@ -110,7 +121,7 @@ if st.button("Изчисли Риска", type="primary", use_container_width=Tr
             patient_tree_df_final = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
             prob = model.predict_proba(patient_tree_df_final)[0][1] * 100
             
-        with cols_ai[i]:
+        with cols_group3[i]:
             st.metric(label=m_name, value=f"{prob:.1f}%")
             
     st.divider()
