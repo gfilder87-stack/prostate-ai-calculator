@@ -27,7 +27,7 @@ def load_models():
 
 imputer_tree, scaler_tree, scaler_linear, linear_cols, models = load_models()
 
-st.title("Визуализатор за Риск от csPCa (ISUP > 1)")
+st.title("Визуализатор за Риск от csPCa (ISUP  \(\ge \) 1)")
 st.markdown("Въведете клиничните данни на пациента. Системата автоматично ще изчисли **PSAd lesion** и ще анализира риска чрез 8 AI алгоритъма.")
 
 # 2. Полета за въвеждане от лекаря
@@ -38,7 +38,7 @@ with col1:
     pv = st.number_input("Обем на простатата (PV в mL)", min_value=10, max_value=200, value=50)
 
 with col2:
-    pirads = st.selectbox("PI-RADS Скор", options=[1, 2, 3, 4, 5], index=2)
+    pirads = st.selectbox("PI-RADS Скор", options=[2, 3, 4, 5], index=1)
     lesion_vol = st.number_input("Обем на лезията (mL)", min_value=0.1, max_value=50.0, value=1.0, format="%.2f")
 
 # 3. Автоматично изчисляване на PSAd lesion по обновената формула
