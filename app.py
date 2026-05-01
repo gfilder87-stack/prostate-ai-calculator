@@ -68,7 +68,7 @@ if pirads_col in linear_cols:
 patient_linear_scaled = scaler_linear.transform(patient_linear_df)
 
 # Бутон за пресмятане
-if st.button("Изчисли Риска", type="primary", use_container_width=True):
+if st.button("Изчисли риска", type="primary", use_container_width=True):
     st.divider()
     
     # ==========================================
