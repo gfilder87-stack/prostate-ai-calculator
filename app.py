@@ -27,7 +27,7 @@ def load_models():
 
 imputer_tree, scaler_tree, scaler_linear, linear_cols, models = load_models()
 
-st.title("Визуализатор за Риск от csPCa (ISUP  \(\ge \) 1)")
+st.title("Калкулатор на риск от клинично значим карцином на простатната жлеза (ISUP  "\geq 1")")
 st.markdown("Въведете клиничните данни на пациента. Системата автоматично ще изчисли **PSAd lesion** и ще анализира риска чрез 8 AI алгоритъма.")
 
 # 2. Полета за въвеждане от лекаря
