@@ -27,8 +27,10 @@ def load_models():
 
 imputer_tree, scaler_tree, scaler_linear, linear_cols, models = load_models()
 
-st.title("Калкулатор на риск от клинично значим карцином на простатната жлеза (ISUP  "\geq 1")")
-st.markdown("Въведете клиничните данни на пациента. Системата автоматично ще изчисли **PSAd lesion** и ще анализира риска чрез 8 AI алгоритъма.")
+# Центрирани заглавие и академично описание чрез HTML
+st.markdown("<h1 style='text-align: center;'>Калкулатор на риск от клинично значим карцином на простатната жлеза (ISUP ≥ 2)</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 18px;'>Въведете клиничните данни на пациента. Системата автоматично ще изчисли <b>лезийната плътност на tPSA</b> и ще стратифицира риска чрез ансамбъл от 8 алгоритъма с изкуствен интелект.</p>", unsafe_allow_html=True)
+st.divider()
 
 # 2. Полета за въвеждане от лекаря
 col1, col2 = st.columns(2)
@@ -40,10 +42,10 @@ with col1:
 with col2:
     pirads = st.selectbox("PI-RADS Скор", options=[2, 3, 4, 5], index=1)
     lesion_vol = st.number_input("Обем на лезията (mL)", min_value=0.1, max_value=50.0, value=1.0, format="%.2f")
-
-# 3. Автоматично изчисляване на PSAd lesion по обновената формула
-psad_lesion = (tpsa - (0.12 * pv)) / lesion_vol
-st.info(f"**Автоматично изчислен PSAd lesion:** {psad_lesion:.3f}")
+    
+    # 3. Автоматично изчисляване (Позиционирано в колона 2, ред 3)
+    psad_lesion = (tpsa - (0.12 * pv)) / lesion_vol
+    st.info(f"**Автоматично изчислена лезийна плътност на tPSA:** {psad_lesion:.2f}")
 
 # --- ПОТОК 1: Подготовка на данни за Дървета и Невронна мрежа ---
 feature_names_tree = ['Age', 'tPSA', 'PV', 'PI-RADS', 'PSAd lesion']
@@ -68,9 +70,9 @@ if pirads_col in linear_cols:
 patient_linear_scaled = scaler_linear.transform(patient_linear_df)
 
 # Бутон за пресмятане
-if st.button("Изчисли Риска", type="primary"):
+if st.button("Изчисли Риска", type="primary", use_container_width=True):
     st.divider()
-    st.subheader("Резултати от 8-те алгоритъма:")
+    st.subheader("Резултати от алгоритмите:")
     
     cols = st.columns(4)
     model_keys = list(models.keys())
@@ -95,7 +97,7 @@ if st.button("Изчисли Риска", type="primary"):
     
     # 4. Визуализация на влиянието (SHAP Waterfall) за Random Forest
     st.subheader("Обяснение на решението (Random Forest)")
-    st.markdown("Графиката показва как всеки индивидуален параметър е повлиял за повишаване (червено) или понижаване (синьо) на риска за този конкретен пациент спрямо средния риск.")
+    st.markdown("Графиката показва как всяка стойност на пациента е повлияла за повишаване (червено) или понижаване (синьо) на индивидуалния риск спрямо средния базов риск.")
     
     rf_model = models['Random Forest']
     patient_tree_df_final = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
