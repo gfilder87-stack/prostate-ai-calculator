@@ -27,9 +27,9 @@ def load_models():
 
 imputer_tree, scaler_tree, scaler_linear, linear_cols, models = load_models()
 
-# Центрирани заглавие и академично описание чрез HTML
+# Центрирани заглавие и академично описание
 st.markdown("<h1 style='text-align: center;'>Калкулатор на риск от клинично значим карцином на простатната жлеза (ISUP ≥ 2)</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 18px;'>Въведете клиничните данни на пациента. Системата автоматично ще изчисли <b>лезийната плътност на tPSA</b> и ще стратифицира риска чрез ансамбъл от 8 алгоритъма с изкуствен интелект.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 18px;'>Въведете клиничните данни на пациента. Системата автоматично ще изчисли <b>лезийната плътност на tPSA</b> и ще стратифицира риска чрез ансамбъл от 8 алгоритъма.</p>", unsafe_allow_html=True)
 st.divider()
 
 # 2. Полета за въвеждане от лекаря
@@ -55,14 +55,12 @@ patient_tree_imp = imputer_tree.transform(patient_df_tree)
 patient_tree_scaled = scaler_tree.transform(patient_tree_imp)
 
 # --- ПОТОК 2: Подготовка на данни за Линейните модели (Логаритми и Dummy) ---
-# Създаваме празен ред с всички колони, които моделът очаква (пълни с нули)
 patient_linear_df = pd.DataFrame(0, index=[0], columns=linear_cols)
 patient_linear_df['Age'] = age
 patient_linear_df['log_tPSA'] = np.log(tpsa)
 patient_linear_df['log_PV'] = np.log(pv)
 patient_linear_df['PSAd lesion'] = psad_lesion
 
-# Ако PI-RADS не е 5 (което е базовата категория), слагаме 1 в съответната колона
 pirads_col = f'PIRADS_{pirads}'
 if pirads_col in linear_cols:
     patient_linear_df[pirads_col] = 1
@@ -72,32 +70,54 @@ patient_linear_scaled = scaler_linear.transform(patient_linear_df)
 # Бутон за пресмятане
 if st.button("Изчисли Риска", type="primary", use_container_width=True):
     st.divider()
-    st.subheader("Резултати от алгоритмите:")
     
-    cols = st.columns(4)
-    model_keys = list(models.keys())
+    # ==========================================
+    # ГРУПА 1: Конвенционална статистика
+    # ==========================================
+    st.subheader("Конвенционална статистика (Линейни модели)")
+    st.markdown("Традиционен мултивариантен анализ и регуляризирани регресии. Те показват базовата линейна зависимост между клиничните параметри и риска.")
     
-    for i, m_name in enumerate(model_keys):
+    cols_lin = st.columns(4)
+    linear_model_names = ['Logistic Regression', 'Ridge', 'LASSO', 'Elastic Net']
+    
+    for i, m_name in enumerate(linear_model_names):
+        model = models[m_name]
+        prob = model.predict_proba(patient_linear_scaled)[0][1] * 100
+        
+        # Визуално преименуваме Логистичната регресия за по-голяма яснота
+        display_name = "Multivariate Log. Reg." if m_name == 'Logistic Regression' else m_name
+        
+        with cols_lin[i]:
+            st.metric(label=display_name, value=f"{prob:.1f}%")
+            
+    st.write("") # Празен ред за разстояние
+    
+    # ==========================================
+    # ГРУПА 2: Изкуствен интелект (Машинно обучение)
+    # ==========================================
+    st.subheader("Изкуствен интелект (Машинно обучение)")
+    st.markdown("Модерни нелинейни AI алгоритми, способни да откриват сложни и скрити зависимости (вкл. прагове на възраст и обем), които убягват на конвенционалната статистика.")
+    
+    cols_ai = st.columns(4)
+    ai_model_names = ['Classification Tree', 'Random Forest', 'XGBoost', 'Neural Network']
+    
+    for i, m_name in enumerate(ai_model_names):
         model = models[m_name]
         
-        # Насочване на правилните данни към правилните модели
-        if m_name in ['Logistic Regression', 'Ridge', 'LASSO', 'Elastic Net']:
-            prob = model.predict_proba(patient_linear_scaled)[0][1] * 100
-        elif m_name == 'Neural Network':
+        if m_name == 'Neural Network':
             prob = model.predict_proba(patient_tree_scaled)[0][1] * 100
-        else: # За дърветата (Tree, RF, XGBoost)
-            # Връщаме формата на DataFrame, за да може XGBoost и SHAP да виждат имената на колоните
+        else: # Дървета
             patient_tree_df_final = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
             prob = model.predict_proba(patient_tree_df_final)[0][1] * 100
             
-        with cols[i % 4]:
+        with cols_ai[i]:
             st.metric(label=m_name, value=f"{prob:.1f}%")
             
     st.divider()
     
-    # 4. Визуализация на влиянието (SHAP Waterfall) за Random Forest
-    st.subheader("Обяснение на решението (Random Forest)")
-    st.markdown("Графиката показва как всяка стойност на пациента е повлияла за повишаване (червено) или понижаване (синьо) на индивидуалния риск спрямо средния базов риск.")
+    # 4. Визуализация на влиянието (SHAP Waterfall)
+    st.subheader("Обяснение на AI решението (Random Forest SHAP)")
+    st.markdown("Графиката показва как всяка клинична стойност на пациента е повлияла за повишаване (червено) или понижаване (синьо) на индивидуалния риск спрямо средния базов риск в кохортата.")
     
     rf_model = models['Random Forest']
     patient_tree_df_final = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
