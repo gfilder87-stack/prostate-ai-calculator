@@ -83,6 +83,35 @@ patient_linear_scaled = scaler_linear.transform(patient_linear_df)
 if st.button("Изчисли риска", type="primary", use_container_width=True):
     st.divider()
     
+    # Речник за предварително запазване на изчислените вероятности за всички модели
+    calc_probs = {}
+    for m_name in models.keys():
+        model = models[m_name]
+        if m_name in ['Logistic Regression', 'Ridge', 'LASSO', 'Elastic Net']:
+            calc_probs[m_name] = model.predict_proba(patient_linear_scaled)[0][1] * 100
+        elif m_name == 'Neural Network':
+            calc_probs[m_name] = model.predict_proba(patient_tree_scaled)[0][1] * 100
+        else: # Дървета
+            patient_tree_df_final = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
+            calc_probs[m_name] = model.predict_proba(patient_tree_df_final)[0][1] * 100
+
+    # СПЕЦИАЛНА ФУНКЦИЯ ЗА ОЦВЕТЯВАНЕ В ЧЕРВЕНО
+    def display_metric_with_threshold(name, display_name, prob, cutoff):
+        if prob >= cutoff:
+            # Ако рискът е над прага - червен и удебелен текст (mimicking st.metric style)
+            st.markdown(f"""
+            <div style='line-height: 1.2; margin-bottom: 8px;'>
+                <span style='font-size: 14px; color: #ff2b2b; font-weight: bold;'>{display_name}</span><br>
+                <span style='font-size: 1.8rem; color: #ff2b2b; font-weight: bold;'>{prob:.1f}%</span>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            # Ако рискът е под прага - нормален дизайн
+            st.metric(label=display_name, value=f"{prob:.1f}%")
+        
+        # Легенда за прага под самия резултат
+        st.caption(f"Праг за изчакване: < {cutoff:.2f}%")
+
     # ==========================================
     # ГРУПА 1: Конвенционална биостатистика
     # ==========================================
@@ -90,12 +119,8 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     st.markdown("Мултивариантна логистична регресия. Класическият златен стандарт, показващ базовата линейна зависимост между клиничните параметри и риска.")
     
     cols_group1 = st.columns(2) 
-    model_log = models['Logistic Regression']
-    prob_log = model_log.predict_proba(patient_linear_scaled)[0][1] * 100
     with cols_group1[0]:
-        st.metric(label="Multivariate Logistic Regression", value=f"{prob_log:.1f}%")
-        # Добавяне на референтния праг
-        st.caption(f"Праг за изчакване: < {CUTOFFS['Logistic Regression']:.2f}%")
+        display_metric_with_threshold('Logistic Regression', 'Multivariate Logistic Regression', calc_probs['Logistic Regression'], CUTOFFS['Logistic Regression'])
             
     st.write("") 
     
@@ -109,12 +134,8 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     reg_models = ['Ridge', 'LASSO', 'Elastic Net']
     
     for i, m_name in enumerate(reg_models):
-        model = models[m_name]
-        prob = model.predict_proba(patient_linear_scaled)[0][1] * 100
         with cols_group2[i]:
-            st.metric(label=m_name, value=f"{prob:.1f}%")
-            # Добавяне на референтния праг
-            st.caption(f"Праг за изчакване: < {CUTOFFS[m_name]:.2f}%")
+            display_metric_with_threshold(m_name, m_name, calc_probs[m_name], CUTOFFS[m_name])
             
     st.write("") 
 
@@ -127,25 +148,9 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     cols_group3 = st.columns(4) 
     ai_models = ['Classification Tree', 'Random Forest', 'XGBoost', 'Neural Network']
     
-    rf_prob_value = 0 # Променлива, в която ще запазим резултата на Random Forest
-    
     for i, m_name in enumerate(ai_models):
-        model = models[m_name]
-        
-        if m_name == 'Neural Network':
-            prob = model.predict_proba(patient_tree_scaled)[0][1] * 100
-        else: # Дървета
-            patient_tree_df_final = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
-            prob = model.predict_proba(patient_tree_df_final)[0][1] * 100
-            
-        # Записваме специфично резултата на Random Forest за светофара
-        if m_name == 'Random Forest':
-            rf_prob_value = prob
-            
         with cols_group3[i]:
-            st.metric(label=m_name, value=f"{prob:.1f}%")
-            # Добавяне на референтния праг
-            st.caption(f"Праг за изчакване: < {CUTOFFS[m_name]:.2f}%")
+            display_metric_with_threshold(m_name, m_name, calc_probs[m_name], CUTOFFS[m_name])
             
     st.divider()
 
@@ -154,6 +159,7 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     # ==========================================
     st.subheader("Клинична препоръка (базирана на модела-шампион Random Forest)")
     
+    rf_prob_value = calc_probs['Random Forest']
     rf_cutoff = CUTOFFS['Random Forest'] 
     
     if rf_prob_value >= rf_cutoff:
