@@ -17,9 +17,8 @@ def load_models():
     scaler_linear = joblib.load('scaler_linear.pkl')
     linear_cols = joblib.load('linear_feature_names.pkl')
     
-    # Зареждане на фоновите данни за SHAP
-    bg_tree = joblib.load('background_tree.pkl')
-    bg_linear = joblib.load('background_linear.pkl')
+    # Зареждане на ОРИГИНАЛНИТЕ фонови данни (не скалирани)
+    bg_raw = joblib.load('background_raw.pkl')
     
     models = {
         'Logistic Regression': joblib.load('log_reg.pkl'),
@@ -31,9 +30,9 @@ def load_models():
         'XGBoost': joblib.load('xgb.pkl'),
         'Neural Network': joblib.load('nn.pkl')
     }
-    return imputer_tree, scaler_tree, scaler_linear, linear_cols, bg_tree, bg_linear, models
+    return imputer_tree, scaler_tree, scaler_linear, linear_cols, bg_raw, models
 
-imputer_tree, scaler_tree, scaler_linear, linear_cols, bg_tree, bg_linear, models = load_models()
+imputer_tree, scaler_tree, scaler_linear, linear_cols, bg_raw, models = load_models()
 
 # РЕЧНИК С ПРАГОВЕ ЗА БЕЗОПАСНОСТ (5% изпуснати карциноми)
 CUTOFFS = {
@@ -68,7 +67,7 @@ with col2:
     psad_lesion = (tpsa - (0.12 * pv)) / lesion_vol
     st.info(f"**Автоматично изчислена плътност на tPSA в лезията:** {psad_lesion:.2f}")
 
-# Подготовка на данните
+# Подготовка на данните за предсказване (както преди)
 feature_names_tree = ['Age', 'tPSA', 'PV', 'PI-RADS', 'PSAd lesion']
 patient_df_tree = pd.DataFrame([[age, tpsa, pv, pirads, psad_lesion]], columns=feature_names_tree)
 patient_tree_imp = imputer_tree.transform(patient_df_tree)
@@ -85,14 +84,15 @@ if pirads_col in linear_cols:
 
 patient_linear_scaled = scaler_linear.transform(patient_linear_df)
 
-# БУТОН: Само казва на системата да запамети, че искаме резултати
+# БУТОН
 if st.button("Изчисли риска", type="primary", use_container_width=True):
     st.session_state.show_results = True
 
-# АКО ВЕДНЪЖ СМЕ НАТИСНАЛИ БУТОНА -> ПОКАЗВАЙ РЕЗУЛТАТИТЕ
+# АКО Е НАТИСНАТ БУТОНА -> ПОКАЗВАЙ
 if st.session_state.show_results:
     st.divider()
     
+    # 1. Изчисляване на вероятностите
     calc_probs = {}
     for m_name in models.keys():
         model = models[m_name]
@@ -164,46 +164,60 @@ if st.session_state.show_results:
     st.divider()
     
     # ==========================================
-    # УНИВЕРСАЛНА SHAP ГРАФИКА С ПАДАЩО МЕНЮ
+    # ИНТЕЛИГЕНТНА SHAP ГРАФИКА ЗА ВСИЧКИ МОДЕЛИ
     # ==========================================
     st.subheader("Обяснение на AI решението (SHAP Waterfall)")
-    st.markdown("Графиката показва как всяка стойност на пациента е повлияла за повишаване (червено) или понижаване (синьо) на риска в избрания модел.")
+    st.markdown("Графиката показва как всяка **РЕАЛНА** клинична стойност на пациента е повлияла за повишаване (червено) или понижаване (синьо) на риска в избрания модел.")
     
     # Падащо меню с ВСИЧКИ модели
     shap_model_choice = st.selectbox(
         "Изберете модел за визуализация:",
         list(models.keys()),
-        index=list(models.keys()).index('Random Forest') # По подразбиране е Random Forest
+        index=list(models.keys()).index('Random Forest')
     )
     
     selected_model = models[shap_model_choice]
     
-    # Логика за създаване на обяснител според вида на модела
-    try:
+    # Дефинираме ОРИГИНАЛНИТЕ сурови данни (това, което лекарят въвежда)
+    original_feature_names = ['Age', 'tPSA', 'PV', 'PI-RADS', 'PSAd lesion']
+    patient_raw_df = pd.DataFrame([[age, tpsa, pv, pirads, psad_lesion]], columns=original_feature_names)
+
+    # Създаваме "опаковка", която приема сурови числа и ги превръща в това, което моделът иска
+    def custom_predict_proba(X_raw_numpy):
+        df_raw = pd.DataFrame(X_raw_numpy, columns=original_feature_names)
+        
         if shap_model_choice in ['Logistic Regression', 'Ridge', 'LASSO', 'Elastic Net']:
-            # За линейните модели подаваме функцията predict_proba, фоновите данни и имената на колоните
-            explainer = shap.Explainer(selected_model.predict_proba, bg_linear, feature_names=linear_cols)
-            patient_data = pd.DataFrame(patient_linear_scaled, columns=linear_cols)
-            shap_obj = explainer(patient_data)
+            df_linear = pd.DataFrame(0, index=np.arange(len(df_raw)), columns=linear_cols)
+            df_linear['Age'] = df_raw['Age'].values
+            df_linear['log_tPSA'] = np.log(df_raw['tPSA'].values.astype(float))
+            df_linear['log_PV'] = np.log(df_raw['PV'].values.astype(float))
+            df_linear['PSAd lesion'] = df_raw['PSAd lesion'].values
             
-        elif shap_model_choice == 'Neural Network':
-            explainer = shap.Explainer(selected_model.predict_proba, scaler_tree.transform(bg_tree), feature_names=feature_names_tree)
-            patient_data = pd.DataFrame(patient_tree_scaled, columns=feature_names_tree)
-            shap_obj = explainer(patient_data)
+            for idx, pirads_val in enumerate(df_raw['PI-RADS'].values):
+                pirads_col = f'PIRADS_{int(pirads_val)}'
+                if pirads_col in linear_cols:
+                    df_linear.loc[idx, pirads_col] = 1
+                    
+            X_scaled = scaler_linear.transform(df_linear)
+            return selected_model.predict_proba(X_scaled)
             
-        else: 
-            # За дърветата (Tree, RF, XGBoost)
-            # Използваме TreeExplainer, защото е по-стабилен за тях, но без да му подаваме модела директно, 
-            # а подаваме predict_proba, за да избегнем XGBoost бъга.
-            explainer = shap.Explainer(selected_model.predict_proba, bg_tree, feature_names=feature_names_tree)
-            patient_data = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
-            shap_obj = explainer(patient_data)
-            
-        # Извличане на резултата за клас 1 (csPCa)
+        else:
+            X_imp = imputer_tree.transform(df_raw)
+            if shap_model_choice == 'Neural Network':
+                X_scaled = scaler_tree.transform(X_imp)
+                return selected_model.predict_proba(X_scaled)
+            else: 
+                df_imp = pd.DataFrame(X_imp, columns=original_feature_names)
+                return selected_model.predict_proba(df_imp)
+
+    try:
+        # Използваме универсалния Explainer с ОРИГИНАЛНИТЕ фонови данни (bg_raw)
+        explainer = shap.Explainer(custom_predict_proba, bg_raw)
+        shap_obj = explainer(patient_raw_df)
+        
         if len(shap_obj.values.shape) == 3:
             exp_single = shap_obj[0, :, 1]
-        elif len(shap_obj.values.shape) == 2 and shap_obj.values.shape[1] > len(patient_data.columns):
-            # В случай, че Explainer върне масив с вероятности за 0 и 1 в 2D формат
+        elif len(shap_obj.values.shape) == 2 and shap_obj.values.shape[1] > len(original_feature_names):
             exp_single = shap_obj[0]
             exp_single.values = exp_single.values[:, 1]
             exp_single.base_values = exp_single.base_values[1]
@@ -215,4 +229,4 @@ if st.session_state.show_results:
         st.pyplot(fig)
         
     except Exception as e:
-        st.error(f"Неуспешно генериране на SHAP графика за този модел. Моля, опитайте с друг. (Грешка: {e})")
+        st.error(f"Възникна грешка при генерирането на графиката: {e}")
