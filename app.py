@@ -4,14 +4,22 @@ import pandas as pd
 import joblib
 import shap
 import matplotlib.pyplot as plt
+import warnings
 
-# 1. Зареждане на файловете (Модели, скалъри и списъци с колони)
+# Игнорираме някои безобидни предупреждения на SHAP
+warnings.filterwarnings('ignore')
+
+# 1. Зареждане на файловете (Модели, скалъри и фонови данни)
 @st.cache_resource
 def load_models():
     imputer_tree = joblib.load('imputer_tree.pkl')
     scaler_tree = joblib.load('scaler_tree.pkl')
     scaler_linear = joblib.load('scaler_linear.pkl')
     linear_cols = joblib.load('linear_feature_names.pkl')
+    
+    # Зареждане на фоновите данни за SHAP
+    bg_tree = joblib.load('background_tree.pkl')
+    bg_linear = joblib.load('background_linear.pkl')
     
     models = {
         'Logistic Regression': joblib.load('log_reg.pkl'),
@@ -23,9 +31,9 @@ def load_models():
         'XGBoost': joblib.load('xgb.pkl'),
         'Neural Network': joblib.load('nn.pkl')
     }
-    return imputer_tree, scaler_tree, scaler_linear, linear_cols, models
+    return imputer_tree, scaler_tree, scaler_linear, linear_cols, bg_tree, bg_linear, models
 
-imputer_tree, scaler_tree, scaler_linear, linear_cols, models = load_models()
+imputer_tree, scaler_tree, scaler_linear, linear_cols, bg_tree, bg_linear, models = load_models()
 
 # РЕЧНИК С ПРАГОВЕ ЗА БЕЗОПАСНОСТ (5% изпуснати карциноми)
 CUTOFFS = {
@@ -81,7 +89,7 @@ patient_linear_scaled = scaler_linear.transform(patient_linear_df)
 if st.button("Изчисли риска", type="primary", use_container_width=True):
     st.session_state.show_results = True
 
-# АКО ВЕДНЪЖ СМЕ НАТИСНАЛИ БУТОНА -> ПОКАЗВАЙ РЕЗУЛТАТИТЕ (и не ги крий)
+# АКО ВЕДНЪЖ СМЕ НАТИСНАЛИ БУТОНА -> ПОКАЗВАЙ РЕЗУЛТАТИТЕ
 if st.session_state.show_results:
     st.divider()
     
@@ -155,27 +163,56 @@ if st.session_state.show_results:
 
     st.divider()
     
-    # SHAP ГРАФИКА С ПАДАЩО МЕНЮ (Засега само за дърветата)
+    # ==========================================
+    # УНИВЕРСАЛНА SHAP ГРАФИКА С ПАДАЩО МЕНЮ
+    # ==========================================
     st.subheader("Обяснение на AI решението (SHAP Waterfall)")
-    st.markdown("Графиката показва как всяка стойност на пациента е повлияла за повишаване (червено) или понижаване (синьо) на риска.")
+    st.markdown("Графиката показва как всяка стойност на пациента е повлияла за повишаване (червено) или понижаване (синьо) на риска в избрания модел.")
     
+    # Падащо меню с ВСИЧКИ модели
     shap_model_choice = st.selectbox(
         "Изберете модел за визуализация:",
-        ['Random Forest', 'XGBoost', 'Classification Tree'],
-        index=0
+        list(models.keys()),
+        index=list(models.keys()).index('Random Forest') # По подразбиране е Random Forest
     )
     
     selected_model = models[shap_model_choice]
-    patient_tree_df_final = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
     
-    explainer = shap.TreeExplainer(selected_model)
-    shap_obj = explainer(patient_tree_df_final)
-    
-    if len(shap_obj.values.shape) == 3:
-        exp_single = shap_obj[0, :, 1]
-    else:
-        exp_single = shap_obj[0]
+    # Логика за създаване на обяснител според вида на модела
+    try:
+        if shap_model_choice in ['Logistic Regression', 'Ridge', 'LASSO', 'Elastic Net']:
+            # За линейните модели подаваме функцията predict_proba, фоновите данни и имената на колоните
+            explainer = shap.Explainer(selected_model.predict_proba, bg_linear, feature_names=linear_cols)
+            patient_data = pd.DataFrame(patient_linear_scaled, columns=linear_cols)
+            shap_obj = explainer(patient_data)
+            
+        elif shap_model_choice == 'Neural Network':
+            explainer = shap.Explainer(selected_model.predict_proba, scaler_tree.transform(bg_tree), feature_names=feature_names_tree)
+            patient_data = pd.DataFrame(patient_tree_scaled, columns=feature_names_tree)
+            shap_obj = explainer(patient_data)
+            
+        else: 
+            # За дърветата (Tree, RF, XGBoost)
+            # Използваме TreeExplainer, защото е по-стабилен за тях, но без да му подаваме модела директно, 
+            # а подаваме predict_proba, за да избегнем XGBoost бъга.
+            explainer = shap.Explainer(selected_model.predict_proba, bg_tree, feature_names=feature_names_tree)
+            patient_data = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
+            shap_obj = explainer(patient_data)
+            
+        # Извличане на резултата за клас 1 (csPCa)
+        if len(shap_obj.values.shape) == 3:
+            exp_single = shap_obj[0, :, 1]
+        elif len(shap_obj.values.shape) == 2 and shap_obj.values.shape[1] > len(patient_data.columns):
+            # В случай, че Explainer върне масив с вероятности за 0 и 1 в 2D формат
+            exp_single = shap_obj[0]
+            exp_single.values = exp_single.values[:, 1]
+            exp_single.base_values = exp_single.base_values[1]
+        else:
+            exp_single = shap_obj[0]
+            
+        fig, ax = plt.subplots(figsize=(10, 5))
+        shap.waterfall_plot(exp_single, show=False)
+        st.pyplot(fig)
         
-    fig, ax = plt.subplots(figsize=(8, 4))
-    shap.waterfall_plot(exp_single, show=False)
-    st.pyplot(fig)
+    except Exception as e:
+        st.error(f"Неуспешно генериране на SHAP графика за този модел. Моля, опитайте с друг. (Грешка: {e})")
