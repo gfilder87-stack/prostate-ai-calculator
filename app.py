@@ -50,19 +50,23 @@ CUTOFFS = {
 if 'show_results' not in st.session_state:
     st.session_state.show_results = False
 
+# Функция, която скрива резултатите при промяна на какъвто и да е входен параметър
+def hide_results():
+    st.session_state.show_results = False
+
 st.markdown("<h1 style='text-align: center;'>Калкулатор за риск от клинично значим карцином на простатната жлеза</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; font-size: 18px;'>Въведете клиничните данни на пациента. Системата автоматично ще изчисли плътността на tPSA в лезията и ще стратифицира риска според 8 алгоритъма.</p>", unsafe_allow_html=True)
 st.divider()
 
 col1, col2 = st.columns(2)
 with col1:
-    age = st.number_input("Възраст (години)", min_value=40, max_value=100, value=65)
-    tpsa = st.number_input("tPSA (ng/mL)", min_value=0.1, max_value=100.0, value=5.0, format="%.2f")
-    pv = st.number_input("Обем на простатата (mL)", min_value=10, max_value=200, value=50)
+    age = st.number_input("Възраст (години)", min_value=40, max_value=100, value=65, on_change=hide_results)
+    tpsa = st.number_input("tPSA (ng/mL)", min_value=0.1, max_value=100.0, value=5.0, format="%.2f", on_change=hide_results)
+    pv = st.number_input("Обем на простатата (mL)", min_value=10, max_value=200, value=50, on_change=hide_results)
 
 with col2:
-    pirads = st.selectbox("PI-RADS оценка", options=[2, 3, 4, 5], index=1)
-    lesion_vol = st.number_input("Обем на лезията (mL)", min_value=0.1, max_value=50.0, value=1.0, format="%.2f")
+    pirads = st.selectbox("PI-RADS оценка", options=[2, 3, 4, 5], index=1, on_change=hide_results)
+    lesion_vol = st.number_input("Обем на лезията (mL)", min_value=0.1, max_value=50.0, value=1.0, format="%.2f", on_change=hide_results)
     
     psad_lesion = (tpsa - (0.12 * pv)) / lesion_vol
     st.info(f"**Автоматично изчислена плътност на tPSA в лезията:** {psad_lesion:.2f}")
@@ -210,23 +214,25 @@ if st.session_state.show_results:
                 df_imp = pd.DataFrame(X_imp, columns=original_feature_names)
                 return selected_model.predict_proba(df_imp)
 
-    try:
-        # Използваме универсалния Explainer с ОРИГИНАЛНИТЕ фонови данни (bg_raw)
-        explainer = shap.Explainer(custom_predict_proba, bg_raw)
-        shap_obj = explainer(patient_raw_df)
-        
-        if len(shap_obj.values.shape) == 3:
-            exp_single = shap_obj[0, :, 1]
-        elif len(shap_obj.values.shape) == 2 and shap_obj.values.shape[1] > len(original_feature_names):
-            exp_single = shap_obj[0]
-            exp_single.values = exp_single.values[:, 1]
-            exp_single.base_values = exp_single.base_values[1]
-        else:
-            exp_single = shap_obj[0]
+    # Зареждане на графиката със Spinner (докато се генерира, старата няма да се вижда)
+    with st.spinner('Генериране на обяснението... Моля изчакайте.'):
+        try:
+            # Използваме универсалния Explainer с ОРИГИНАЛНИТЕ фонови данни (bg_raw)
+            explainer = shap.Explainer(custom_predict_proba, bg_raw)
+            shap_obj = explainer(patient_raw_df)
             
-        fig, ax = plt.subplots(figsize=(10, 5))
-        shap.waterfall_plot(exp_single, show=False)
-        st.pyplot(fig)
-        
-    except Exception as e:
-        st.error(f"Възникна грешка при генерирането на графиката: {e}")
+            if len(shap_obj.values.shape) == 3:
+                exp_single = shap_obj[0, :, 1]
+            elif len(shap_obj.values.shape) == 2 and shap_obj.values.shape[1] > len(original_feature_names):
+                exp_single = shap_obj[0]
+                exp_single.values = exp_single.values[:, 1]
+                exp_single.base_values = exp_single.base_values[1]
+            else:
+                exp_single = shap_obj[0]
+                
+            fig, ax = plt.subplots(figsize=(10, 5))
+            shap.waterfall_plot(exp_single, show=False)
+            st.pyplot(fig)
+            
+        except Exception as e:
+            st.error(f"Възникна грешка при генерирането на графиката: {e}")
