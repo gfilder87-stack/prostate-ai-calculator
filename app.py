@@ -50,9 +50,21 @@ CUTOFFS = {
 if 'show_results' not in st.session_state:
     st.session_state.show_results = False
 
-# Функция, която скрива резултатите при промяна на какъвто и да е входен параметър
+if 'current_model' not in st.session_state:
+    st.session_state.current_model = 'Random Forest'
+
+if 'is_calculating_shap' not in st.session_state:
+    st.session_state.is_calculating_shap = False
+
+# Функции за управление на състоянието
 def hide_results():
     st.session_state.show_results = False
+
+def on_model_change():
+    # Тази функция се извиква ВЕДНАГА при смяна на модела от падащото меню.
+    # Тя маркира, че сме в процес на изчисляване, което автоматично ще скрие старата графика.
+    st.session_state.is_calculating_shap = True
+    st.session_state.current_model = st.session_state.shap_dropdown
 
 st.markdown("<h1 style='text-align: center;'>Калкулатор за риск от клинично значим карцином на простатната жлеза</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; font-size: 18px;'>Въведете клиничните данни на пациента. Системата автоматично ще изчисли плътността на tPSA в лезията и ще стратифицира риска според 8 алгоритъма.</p>", unsafe_allow_html=True)
@@ -71,7 +83,7 @@ with col2:
     psad_lesion = (tpsa - (0.12 * pv)) / lesion_vol
     st.info(f"**Автоматично изчислена плътност на tPSA в лезията:** {psad_lesion:.2f}")
 
-# Подготовка на данните за предсказване (както преди)
+# Подготовка на данните за предсказване
 feature_names_tree = ['Age', 'tPSA', 'PV', 'PI-RADS', 'PSAd lesion']
 patient_df_tree = pd.DataFrame([[age, tpsa, pv, pirads, psad_lesion]], columns=feature_names_tree)
 patient_tree_imp = imputer_tree.transform(patient_df_tree)
@@ -91,6 +103,8 @@ patient_linear_scaled = scaler_linear.transform(patient_linear_df)
 # БУТОН
 if st.button("Изчисли риска", type="primary", use_container_width=True):
     st.session_state.show_results = True
+    # При ново изчисляване на пациента, нулираме SHAP статуса, за да се нарисува наново
+    st.session_state.is_calculating_shap = False
 
 # АКО Е НАТИСНАТ БУТОНА -> ПОКАЗВАЙ
 if st.session_state.show_results:
@@ -150,11 +164,7 @@ if st.session_state.show_results:
     st.divider()
 
     # СВЕТОФАР (КОНСИЛИУМ)
-    st.subheader("Клиничен консилиум (Ensemble Voting)")
-    st.caption("Обяснение на цветовия код:\n\n"
-               "🟢 **Зелено:** 0 модела над прага (Пълен консенсус за безопасност).\n\n"
-               "🟡 **Жълто:** 1 до 4 модела над прага (Дискордантност - изисква се индивидуална експертна преценка).\n\n"
-               "🔴 **Червено:** 5 до 8 модела над прага (Мнозинството алгоритми алармират за биопсия).")
+    st.subheader("Клиничен консилиум")
     
     models_over_threshold = sum(1 for m in models.keys() if calc_probs[m] >= CUTOFFS[m])
             
@@ -170,17 +180,23 @@ if st.session_state.show_results:
     # ==========================================
     # ИНТЕЛИГЕНТНА SHAP ГРАФИКА ЗА ВСИЧКИ МОДЕЛИ
     # ==========================================
-    st.subheader("Обяснение на AI решението (SHAP Waterfall)")
+    st.subheader("Обяснение на решението")
     st.markdown("Графиката показва как всяка **РЕАЛНА** клинична стойност на пациента е повлияла за повишаване (червено) или понижаване (синьо) на риска в избрания модел.")
     
-    # Падащо меню с ВСИЧКИ модели
+    # Падащо меню с ВСИЧКИ модели. Използваме ключа 'shap_dropdown', за да го обвържем с on_model_change
     shap_model_choice = st.selectbox(
         "Изберете модел за визуализация:",
         list(models.keys()),
-        index=list(models.keys()).index('Random Forest')
+        index=list(models.keys()).index(st.session_state.current_model),
+        key='shap_dropdown',
+        on_change=on_model_change
     )
     
-    selected_model = models[shap_model_choice]
+    # Празен контейнер (място), в което ще се рисува графиката. 
+    # Това ни позволява да го държим празно, докато се зарежда.
+    plot_container = st.empty()
+    
+    selected_model = models[st.session_state.current_model]
     
     # Дефинираме ОРИГИНАЛНИТЕ сурови данни (това, което лекарят въвежда)
     original_feature_names = ['Age', 'tPSA', 'PV', 'PI-RADS', 'PSAd lesion']
@@ -190,7 +206,7 @@ if st.session_state.show_results:
     def custom_predict_proba(X_raw_numpy):
         df_raw = pd.DataFrame(X_raw_numpy, columns=original_feature_names)
         
-        if shap_model_choice in ['Logistic Regression', 'Ridge', 'LASSO', 'Elastic Net']:
+        if st.session_state.current_model in ['Logistic Regression', 'Ridge', 'LASSO', 'Elastic Net']:
             df_linear = pd.DataFrame(0, index=np.arange(len(df_raw)), columns=linear_cols)
             df_linear['Age'] = df_raw['Age'].values
             df_linear['log_tPSA'] = np.log(df_raw['tPSA'].values.astype(float))
@@ -207,14 +223,14 @@ if st.session_state.show_results:
             
         else:
             X_imp = imputer_tree.transform(df_raw)
-            if shap_model_choice == 'Neural Network':
+            if st.session_state.current_model == 'Neural Network':
                 X_scaled = scaler_tree.transform(X_imp)
                 return selected_model.predict_proba(X_scaled)
             else: 
                 df_imp = pd.DataFrame(X_imp, columns=original_feature_names)
                 return selected_model.predict_proba(df_imp)
 
-    # Зареждане на графиката със Spinner (докато се генерира, старата няма да се вижда)
+    # Тук генерираме графиката и я показваме вътре в празния контейнер
     with st.spinner('Генериране на обяснението... Моля изчакайте.'):
         try:
             # Използваме универсалния Explainer с ОРИГИНАЛНИТЕ фонови данни (bg_raw)
@@ -232,7 +248,12 @@ if st.session_state.show_results:
                 
             fig, ax = plt.subplots(figsize=(10, 5))
             shap.waterfall_plot(exp_single, show=False)
-            st.pyplot(fig)
+            
+            # Показваме графиката в контейнера, което автоматично изчиства индикатора за зареждане
+            plot_container.pyplot(fig)
+            
+            # След като графиката е готова, маркираме, че процесът е приключил
+            st.session_state.is_calculating_shap = False
             
         except Exception as e:
-            st.error(f"Възникна грешка при генерирането на графиката: {e}")
+            plot_container.error(f"Възникна грешка при генерирането на графиката: {e}")
