@@ -45,7 +45,7 @@ with col2:
     
     # 3. Автоматично изчисляване (Позиционирано в колона 2, ред 3)
     psad_lesion = (tpsa - (0.12 * pv)) / lesion_vol
-    st.info(f"**Автоматично изчислена плътността на tPSA в лезията:** {psad_lesion:.2f}")
+    st.info(f"**Автоматично изчислена плътност на tPSA в лезията:** {psad_lesion:.2f}")
 
 # --- ПОТОК 1: Подготовка на данни за Дървета и Невронна мрежа ---
 feature_names_tree = ['Age', 'tPSA', 'PV', 'PI-RADS', 'PSAd lesion']
@@ -77,14 +77,13 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     st.subheader("1. Конвенционална биостатистика")
     st.markdown("Мултивариантна логистична регресия. Класическият златен стандарт, показващ базовата линейна зависимост между клиничните параметри и риска.")
     
-    # Използваме колони, за да поддържаме визуален размер, но показваме само 1
     cols_group1 = st.columns(2) 
     model_log = models['Logistic Regression']
     prob_log = model_log.predict_proba(patient_linear_scaled)[0][1] * 100
     with cols_group1[0]:
         st.metric(label="Multivariate Logistic Regression", value=f"{prob_log:.1f}%")
             
-    st.write("") # Празен ред за разстояние
+    st.write("") 
     
     # ==========================================
     # ГРУПА 2: Регуляризирани регресии
@@ -92,7 +91,7 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     st.subheader("2. Регуляризирани регресии")
     st.markdown("Модели, които съчетават статистика с техники от машинното обучение. Те прилагат регуляризация върху регресионните модели, за да се предотврати претрениране (overfitting).")
     
-    cols_group2 = st.columns(3) # 3 колони за 3-те модела
+    cols_group2 = st.columns(3) 
     reg_models = ['Ridge', 'LASSO', 'Elastic Net']
     
     for i, m_name in enumerate(reg_models):
@@ -101,7 +100,7 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
         with cols_group2[i]:
             st.metric(label=m_name, value=f"{prob:.1f}%")
             
-    st.write("") # Празен ред за разстояние
+    st.write("") 
 
     # ==========================================
     # ГРУПА 3: Изкуствен интелект (Машинно обучение)
@@ -109,8 +108,10 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     st.subheader("3. Изкуствен интелект (AI алгоритми)")
     st.markdown("Модерни нелинейни AI алгоритми, способни да откриват сложни скрити зависимости, които убягват на конвенционалната статистика.")
     
-    cols_group3 = st.columns(4) # 4 колони за 4-те модела
+    cols_group3 = st.columns(4) 
     ai_models = ['Classification Tree', 'Random Forest', 'XGBoost', 'Neural Network']
+    
+    rf_prob_value = 0 # Променлива, в която ще запазим резултата на Random Forest
     
     for i, m_name in enumerate(ai_models):
         model = models[m_name]
@@ -121,12 +122,32 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
             patient_tree_df_final = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
             prob = model.predict_proba(patient_tree_df_final)[0][1] * 100
             
+        # Записваме специфично резултата на Random Forest за светофара
+        if m_name == 'Random Forest':
+            rf_prob_value = prob
+            
         with cols_group3[i]:
             st.metric(label=m_name, value=f"{prob:.1f}%")
             
     st.divider()
+
+    # ==========================================
+    # КЛИНИЧНА ПРЕПОРЪКА (СВЕТОФАР)
+    # ==========================================
+    st.subheader("Клинична препоръка (базирана на модела-шампион Random Forest)")
     
+    rf_cutoff = 32.18 # Доказаният праг от Вашата статия
+    
+    if rf_prob_value >= rf_cutoff:
+        st.error(f"🔴 **СИГНАЛ ЗА БИОПСИЯ (Индивидуален риск: {rf_prob_value:.1f}%)**\n\nРискът на пациента е **над прага за безопасност от {rf_cutoff}%**. Препоръчва се извършване на биопсия, за да се гарантира под 5% риск от пропускане на клинично значим карцином.")
+    else:
+        st.success(f"🟢 **БЕЗОПАСНО ИЗЧАКВАНЕ (Индивидуален риск: {rf_prob_value:.1f}%)**\n\nРискът на пациента е **под прага за безопасност от {rf_cutoff}%**. Според валидационните данни от проучването, биопсията при този пациент може да бъде безопасно спестена (допустим риск от изпускане на csPCa < 5%).")
+
+    st.divider()
+    
+    # ==========================================
     # 4. Визуализация на влиянието (SHAP Waterfall)
+    # ==========================================
     st.subheader("Обяснение на AI решението (Random Forest SHAP)")
     st.markdown("Графиката показва как всяка стойност на различните параметри е повлияла за повишаване (червено) или понижаване (синьо) на индивидуалния риск спрямо средния базов риск в кохортата.")
     
