@@ -27,6 +27,18 @@ def load_models():
 
 imputer_tree, scaler_tree, scaler_linear, linear_cols, models = load_models()
 
+# РЕЧНИК С ПРАГОВЕ ЗА БЕЗОПАСНОСТ (5% изпуснати карциноми)
+CUTOFFS = {
+    'Logistic Regression': 26.17,
+    'Ridge': 26.17,
+    'LASSO': 26.17,
+    'Elastic Net': 26.41,
+    'Classification Tree': 27.78,
+    'Random Forest': 32.18,
+    'XGBoost': 28.46,
+    'Neural Network': 19.25
+}
+
 # Центрирани заглавие и академично описание
 st.markdown("<h1 style='text-align: center;'>Калкулатор за риск от клинично значим карцином на простатната жлеза (ISUP ≥ 2)</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; font-size: 18px;'>Въведете клиничните данни на пациента. Системата автоматично ще изчисли плътността на tPSA в лезията и ще стратифицира риска според 8 алгоритъма.</p>", unsafe_allow_html=True)
@@ -82,6 +94,8 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     prob_log = model_log.predict_proba(patient_linear_scaled)[0][1] * 100
     with cols_group1[0]:
         st.metric(label="Multivariate Logistic Regression", value=f"{prob_log:.1f}%")
+        # Добавяне на референтния праг
+        st.caption(f"Праг за изчакване: < {CUTOFFS['Logistic Regression']:.2f}%")
             
     st.write("") 
     
@@ -99,6 +113,8 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
         prob = model.predict_proba(patient_linear_scaled)[0][1] * 100
         with cols_group2[i]:
             st.metric(label=m_name, value=f"{prob:.1f}%")
+            # Добавяне на референтния праг
+            st.caption(f"Праг за изчакване: < {CUTOFFS[m_name]:.2f}%")
             
     st.write("") 
 
@@ -128,6 +144,8 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
             
         with cols_group3[i]:
             st.metric(label=m_name, value=f"{prob:.1f}%")
+            # Добавяне на референтния праг
+            st.caption(f"Праг за изчакване: < {CUTOFFS[m_name]:.2f}%")
             
     st.divider()
 
@@ -136,7 +154,7 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     # ==========================================
     st.subheader("Клинична препоръка (базирана на модела-шампион Random Forest)")
     
-    rf_cutoff = 32.18 # Доказаният праг от Вашата статия
+    rf_cutoff = CUTOFFS['Random Forest'] 
     
     if rf_prob_value >= rf_cutoff:
         st.error(f"🔴 **СИГНАЛ ЗА БИОПСИЯ (Индивидуален риск: {rf_prob_value:.1f}%)**\n\nРискът на пациента е **над прага за безопасност от {rf_cutoff}%**. Препоръчва се извършване на биопсия, за да се гарантира под 5% риск от пропускане на клинично значим карцином.")
