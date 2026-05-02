@@ -40,7 +40,7 @@ CUTOFFS = {
 }
 
 # Центрирани заглавие и академично описание
-st.markdown("<h1 style='text-align: center;'>Калкулатор за риск от клинично значим карцином на простатната жлеза (ISUP ≥ 2)</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>Калкулатор за риск от клинично значим карцином на простатната жлеза", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; font-size: 18px;'>Въведете клиничните данни на пациента. Системата автоматично ще изчисли плътността на tPSA в лезията и ще стратифицира риска според 8 алгоритъма.</p>", unsafe_allow_html=True)
 st.divider()
 
@@ -49,11 +49,11 @@ col1, col2 = st.columns(2)
 with col1:
     age = st.number_input("Възраст (години)", min_value=40, max_value=100, value=65)
     tpsa = st.number_input("tPSA (ng/mL)", min_value=0.1, max_value=100.0, value=5.0, format="%.2f")
-    pv = st.number_input("Обем на простатата (mm³)", min_value=10, max_value=200, value=50)
+    pv = st.number_input("Обем на простатата (mL)", min_value=10, max_value=200, value=50)
 
 with col2:
     pirads = st.selectbox("PI-RADS оценка", options=[2, 3, 4, 5], index=1)
-    lesion_vol = st.number_input("Обем на лезията (mm³)", min_value=0.1, max_value=50.0, value=1.0, format="%.2f")
+    lesion_vol = st.number_input("Обем на лезията (mL)", min_value=0.1, max_value=50.0, value=1.0, format="%.2f")
     
     # 3. Автоматично изчисляване (Позиционирано в колона 2, ред 3)
     psad_lesion = (tpsa - (0.12 * pv)) / lesion_vol
@@ -116,7 +116,7 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     # ГРУПА 1: Конвенционална биостатистика
     # ==========================================
     st.subheader("1. Конвенционална биостатистика")
-    st.markdown("Мултивариантна логистична регресия. Класическият златен стандарт, показващ базовата линейна зависимост между клиничните параметри и риска.")
+    st.markdown("Класическият златен стандарт, показващ линейна зависимост между клиничните параметри и риска.")
     
     cols_group1 = st.columns(2) 
     with cols_group1[0]:
@@ -127,8 +127,8 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     # ==========================================
     # ГРУПА 2: Регуляризирани регресии
     # ==========================================
-    st.subheader("2. Регуляризирани регресии")
-    st.markdown("Модели, които съчетават статистика с техники от машинното обучение. Те прилагат регуляризация върху регресионните модели, за да се предотврати претрениране (overfitting).")
+    st.subheader("2. Алгоритми за машинно надзиравано обучение")
+    st.markdown("Модели, които съчетават статистика с техники от машинното обучение. Прилагат регуляризация върху регресионните модели, за да се предотврати претрениране когато има много променливи и сравнително малко пациенти.")
     
     cols_group2 = st.columns(3) 
     reg_models = ['Ridge', 'LASSO', 'Elastic Net']
@@ -143,7 +143,7 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     # ГРУПА 3: Изкуствен интелект (Машинно обучение)
     # ==========================================
     st.subheader("3. Изкуствен интелект (AI алгоритми)")
-    st.markdown("Модерни нелинейни AI алгоритми, способни да откриват сложни скрити зависимости, които убягват на конвенционалната статистика.")
+    st.markdown("AI алгоритми, способни да откриват сложни скрити нелинейни зависимости, които убягват на конвенционалната статистика.")
     
     cols_group3 = st.columns(4) 
     ai_models = ['Classification Tree', 'Random Forest', 'XGBoost', 'Neural Network']
