@@ -40,7 +40,7 @@ CUTOFFS = {
 }
 
 # Центрирани заглавие и академично описание
-st.markdown("<h1 style='text-align: center;'>Калкулатор за риск от клинично значим карцином на простатната жлеза", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>Калкулатор за риск от клинично значим карцином на простатната жлеза (ISUP ≥ 2)</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; font-size: 18px;'>Въведете клиничните данни на пациента. Системата автоматично ще изчисли плътността на tPSA в лезията и ще стратифицира риска според 8 алгоритъма.</p>", unsafe_allow_html=True)
 st.divider()
 
@@ -49,11 +49,11 @@ col1, col2 = st.columns(2)
 with col1:
     age = st.number_input("Възраст (години)", min_value=40, max_value=100, value=65)
     tpsa = st.number_input("tPSA (ng/mL)", min_value=0.1, max_value=100.0, value=5.0, format="%.2f")
-    pv = st.number_input("Обем на простатата (mL)", min_value=10, max_value=200, value=50)
+    pv = st.number_input("Обем на простатата (mm³)", min_value=10, max_value=200, value=50)
 
 with col2:
     pirads = st.selectbox("PI-RADS оценка", options=[2, 3, 4, 5], index=1)
-    lesion_vol = st.number_input("Обем на лезията (mL)", min_value=0.1, max_value=50.0, value=1.0, format="%.2f")
+    lesion_vol = st.number_input("Обем на лезията (mm³)", min_value=0.1, max_value=50.0, value=1.0, format="%.2f")
     
     # 3. Автоматично изчисляване (Позиционирано в колона 2, ред 3)
     psad_lesion = (tpsa - (0.12 * pv)) / lesion_vol
@@ -98,7 +98,7 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     # СПЕЦИАЛНА ФУНКЦИЯ ЗА ОЦВЕТЯВАНЕ В ЧЕРВЕНО
     def display_metric_with_threshold(name, display_name, prob, cutoff):
         if prob >= cutoff:
-            # Ако рискът е над прага - червен и удебелен текст (mimicking st.metric style)
+            # Ако рискът е над прага - червен и удебелен текст
             st.markdown(f"""
             <div style='line-height: 1.2; margin-bottom: 8px;'>
                 <span style='font-size: 14px; color: #ff2b2b; font-weight: bold;'>{display_name}</span><br>
@@ -155,30 +155,47 @@ if st.button("Изчисли риска", type="primary", use_container_width=Tr
     st.divider()
 
     # ==========================================
-    # КЛИНИЧНА ПРЕПОРЪКА (СВЕТОФАР)
+    # КЛИНИЧЕН КОНСИЛИУМ (СВЕТОФАР)
     # ==========================================
-    st.subheader("Клинична препоръка (базирана на модела-шампион Random Forest)")
+    st.subheader("Клиничен консилиум (Ensemble Voting)")
+    st.caption("Обяснение на цветовия код:\n"
+               "🟢 Зелено: 0 модела над прага (Пълен консенсус за безопасност).\n"
+               "🟡 Жълто: 1 до 4 модела над прага (Дискордантност - изисква се индивидуална експертна преценка).\n"
+               "🔴 Червено: 5 до 8 модела над прага (Мнозинството алгоритми алармират за биопсия).")
     
-    rf_prob_value = calc_probs['Random Forest']
-    rf_cutoff = CUTOFFS['Random Forest'] 
-    
-    if rf_prob_value >= rf_cutoff:
-        st.error(f"🔴 **СИГНАЛ ЗА БИОПСИЯ (Индивидуален риск: {rf_prob_value:.1f}%)**\n\nРискът на пациента е **над прага за безопасност от {rf_cutoff}%**. Препоръчва се извършване на биопсия, за да се гарантира под 5% риск от пропускане на клинично значим карцином.")
+    # Преброяване колко модела светят в червено
+    models_over_threshold = 0
+    for m in models.keys():
+        if calc_probs[m] >= CUTOFFS[m]:
+            models_over_threshold += 1
+            
+    if models_over_threshold >= 5:
+        st.error(f"🔴 **СИГНАЛ ЗА БИОПСИЯ (Консенсус: {models_over_threshold} от 8 модела)**\n\nМнозинството алгоритми класифицират пациента **над безопасния праг**. Строго се препоръчва извършване на биопсия, за да се предотврати пропускане на клинично значим карцином.")
+    elif models_over_threshold >= 1:
+        st.warning(f"🟡 **ГРАНИЧЕН СЛУЧАЙ (Консенсус: {models_over_threshold} от 8 модела)**\n\nЛипсва пълен консенсус между алгоритмите. Тъй като част от моделите показват повишен риск, решението за биопсия трябва да се вземе на базата на индивидуална експертна преценка.")
     else:
-        st.success(f"🟢 **БЕЗОПАСНО ИЗЧАКВАНЕ (Индивидуален риск: {rf_prob_value:.1f}%)**\n\nРискът на пациента е **под прага за безопасност от {rf_cutoff}%**. Според валидационните данни от проучването, биопсията при този пациент може да бъде безопасно спестена (допустим риск от изпускане на csPCa < 5%).")
+        st.success(f"🟢 **БЕЗОПАСНО ИЗЧАКВАНЕ (Консенсус: 0 от 8 модела)**\n\nВсички 8 модела класифицират пациента **под прага за безопасност**. Според данните от проучването, биопсията при този пациент може да бъде безопасно спестена (допустим риск < 5%).")
 
     st.divider()
     
     # ==========================================
     # 4. Визуализация на влиянието (SHAP Waterfall)
     # ==========================================
-    st.subheader("Обяснение на AI решението (Random Forest SHAP)")
-    st.markdown("Графиката показва как всяка стойност на различните параметри е повлияла за повишаване (червено) или понижаване (синьо) на индивидуалния риск спрямо средния базов риск в кохортата.")
+    st.subheader("Обяснение на AI решението (SHAP Waterfall)")
+    st.markdown("Графиката показва как всяка стойност на пациента е повлияла за повишаване (червено) или понижаване (синьо) на риска.")
     
-    rf_model = models['Random Forest']
+    # Падащо меню (Само за дърветата засега)
+    shap_model_choice = st.selectbox(
+        "Изберете модел за визуализация:",
+        ['Random Forest', 'XGBoost', 'Classification Tree'],
+        index=0
+    )
+    
+    selected_model = models[shap_model_choice]
     patient_tree_df_final = pd.DataFrame(patient_tree_imp, columns=feature_names_tree)
     
-    explainer = shap.TreeExplainer(rf_model)
+    # Изчисляване на SHAP
+    explainer = shap.TreeExplainer(selected_model)
     shap_obj = explainer(patient_tree_df_final)
     
     if len(shap_obj.values.shape) == 3:
